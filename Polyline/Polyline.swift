@@ -50,9 +50,47 @@ public struct Polyline {
     /// The encoded levels (nil if cannot be encoded, or is not provided)
     public let encodedLevels: String?
     
+    public let timestampAndAccuracy: [TimeAndAccuracy]?
+    public let encodedTimestampAndAccuracy: String?
+    
     /// The array of location (computed from coordinates)
     public var locations: [CLLocation]? {
-        return self.coordinates.map(toLocations)
+        if self.coordinates == nil {
+            return nil
+        }
+        
+        if timestampAndAccuracy == nil {
+            return self.coordinates.map(toLocations)
+        }
+        assert(coordinates?.count == timestampAndAccuracy?.count, "Incorrect number of timestamps for coordinates")
+        
+        var locations = [CLLocation]()
+        for (ii, coordinate) in enumerate(self.coordinates!) {
+            let tsAndAcc = timestampAndAccuracy![ii]
+            locations.append(
+                CLLocation(
+                    coordinate: coordinate,
+                    altitude: 0,
+                    horizontalAccuracy: tsAndAcc.1,
+                    verticalAccuracy: 0,
+                    course: -1,
+                    speed: -1,
+                    timestamp: tsAndAcc.0
+                )
+            )
+        }
+        return locations
+    }
+
+    public init(coordinates: [CLLocationCoordinate2D], levels: [UInt32]? = nil, precision: Double = 1e5) {
+        
+        self.coordinates = coordinates
+        self.levels = levels
+        self.timestampAndAccuracy = nil
+        
+        encodedPolyline = encodeCoordinates(coordinates, precision: precision)
+        encodedLevels = levels.map(encodeLevels)
+        encodedTimestampAndAccuracy = nil
     }
     
     #if !os(watchOS)
@@ -69,32 +107,42 @@ public struct Polyline {
     
     /// This designated initializer encodes a `[CLLocationCoordinate2D]`
     ///
-    /// - parameter coordinates: The `Array` of `CLLocationCoordinate2D` that you want to encode
-    /// - parameter levels: The optional `Array` of levels  that you want to encode (default: `nil`)
-    /// - parameter precision: The precision used for encoding (default: `1e5`)
-    public init(coordinates: [CLLocationCoordinate2D], levels: [UInt32]? = nil, precision: Double = 1e5) {
+    /// :param: locations The array of CLLocation that you want to encode
+    /// :param: levels The optional array of levels  that you want to encode (default: nil)
+    /// :param: precision The precision used for encoding (default: 1e5)
+    public init(locations: [CLLocation], levels: [UInt32]? = nil, precision: Double = 1e5) {
         
-        self.coordinates = coordinates
+        self.coordinates = locations.map { $0.coordinate }
         self.levels = levels
+        self.timestampAndAccuracy = locations.map { return ($0.timestamp, $0.horizontalAccuracy) }
         
-        encodedPolyline = encodeCoordinates(coordinates, precision: precision)
-        
+        encodedPolyline = encodeCoordinates(coordinates!, precision: precision)
         encodedLevels = levels.map(encodeLevels)
+        encodedTimestampAndAccuracy = encodeTimestampAndAccuracy(self.timestampAndAccuracy!)
     }
     
     /// This designated initializer decodes a polyline `String`
     ///
-    /// - parameter encodedPolyline: The polyline that you want to decode
-    /// - parameter encodedLevels: The levels that you want to decode (default: `nil`)
-    /// - parameter precision: The precision used for decoding (default: `1e5`)
-    public init(encodedPolyline: String, encodedLevels: String? = nil, precision: Double = 1e5) {
+    /// :param: encodedPolyline The polyline that you want to decode
+    /// :param: encodedLevels The levels that you want to decode (default: nil)
+    /// :param: precision The precision used for decoding (default: 1e5)
+    public init(encodedPolyline: String, encodedTimestampAndAccuracy: String? = nil, encodedLevels: String? = nil, precision: Double = 1e5) {
         
         self.encodedPolyline = encodedPolyline
         self.encodedLevels = encodedLevels
+        self.encodedTimestampAndAccuracy = encodedTimestampAndAccuracy
         
         coordinates = decodePolyline(encodedPolyline, precision: precision)
-
         levels = self.encodedLevels.flatMap(decodeLevels)
+
+        if let tsAndAcc = encodedTimestampAndAccuracy {
+            timestampAndAccuracy = decodeTimestampAndAccuracy(tsAndAcc)
+            if timestampAndAccuracy!.count != coordinates?.count {
+                fatalError("Incorrect number of timestamps for coordinates")
+            }
+        } else {
+            timestampAndAccuracy = nil
+        }
     }
     
     /// This init encodes a `[CLLocation]`
@@ -107,6 +155,7 @@ public struct Polyline {
         let coordinates = toCoordinates(locations)
         self.init(coordinates: coordinates, levels: levels, precision:precision)
     }
+
 }
 
 // MARK: - Public Functions -
@@ -194,6 +243,28 @@ public func decodePolyline(_ encodedPolyline: String, precision: Double = 1e5) -
     
     return decodedCoordinates
 }
+
+public func encodeTimestampAndAccuracy(timestampAndAccuracy: [TimeAndAccuracy]) -> String {
+    if timestampAndAccuracy.count == 0 {
+        return ""
+    }
+
+    
+    
+    return encodeCoordinates(timestampAndAccuracy.map(convertToCoordinate), precision: 1e5)
+}
+
+public func decodeTimestampAndAccuracy(encodedString: String) -> [TimeAndAccuracy]? {
+    if encodedString == "" {
+        return []
+    }
+    var fakeCoordinates: [CLLocationCoordinate2D]! = decodePolyline(encodedString, precision: 1e5)
+    if fakeCoordinates == nil {
+        return nil
+    }
+    return fakeCoordinates.map(convertFromCoordinate)
+}
+
 
 /// This function decodes a String to a [CLLocation]?
 ///
@@ -385,3 +456,35 @@ private func isSeparator(_ value: Int32) -> Bool {
 }
 
 private typealias IntegerCoordinates = (latitude: Int, longitude: Int)
+public typealias TimeAndAccuracy = (timestamp: NSDate, accuracy: Double)
+
+private func convertToCoordinate(timeAndAcc: TimeAndAccuracy) -> CLLocationCoordinate2D {
+    var accuracy = timeAndAcc.accuracy > 4095 ? 4095 : timeAndAcc.accuracy
+    let timestamp = timeAndAcc.timestamp.timeIntervalSince1970
+    
+    assert(accuracy >= 0 && timestamp >= 0, "Need positive values to encode")
+    
+    var ux = unsafeBitCast(UInt32(timestamp), UInt32.self)
+    var uy = unsafeBitCast(UInt32(accuracy), UInt32.self)
+
+    var twoTo22 = UInt32(pow(2.0, 22.0))
+    var bottom = (ux & (twoTo22 - 1))
+    var top = (ux  >> 22)
+    
+    top = (top << 12) | uy
+    
+    var lat = Double(bottom) / 100000.0
+    var lng = Double(top) / 100000.0
+    
+    return CLLocationCoordinate2D(latitude: lat, longitude: lng)
+}
+
+private func convertFromCoordinate(coord: CLLocationCoordinate2D) -> TimeAndAccuracy {
+    var bottom = UInt32(round(coord.latitude * 100000.0))
+    var top = UInt32(round(coord.longitude * 100000.0))
+    
+    var accuracy = UInt32(top & 0xFFF)
+    var timestamp = (((top & ~accuracy) >> 12) << 22) | bottom
+    
+    return (timestamp: NSDate(timeIntervalSince1970: Double(timestamp)), accuracy: Double(accuracy))
+}
