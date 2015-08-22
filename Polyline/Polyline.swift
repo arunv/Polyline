@@ -488,3 +488,10 @@ private func convertFromCoordinate(coord: CLLocationCoordinate2D) -> TimeAndAccu
     
     return (timestamp: NSDate(timeIntervalSince1970: Double(timestamp)), accuracy: Double(accuracy))
 }
+
+@objc class PolylineUtils {
+    class func convertPolylineStringsToPoints(encodedPolyline: String, encodedTimestampAndAccuracy: String) -> [CLLocation] {
+        let poly = Polyline(encodedPolyline: encodedPolyline, encodedTimestampAndAccuracy: encodedTimestampAndAccuracy)
+        return poly.locations ?? []
+    }
+}
