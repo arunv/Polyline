@@ -63,7 +63,8 @@ public struct Polyline {
             return self.coordinates.map(toLocations)
         }
         assert(coordinates?.count == timestampAndAccuracy?.count, "Incorrect number of timestamps for coordinates")
-        
+        var isOrdered = true
+        var lastDate : NSDate?
         var locations = [CLLocation]()
         for (ii, coordinate) in enumerate(self.coordinates!) {
             let tsAndAcc = timestampAndAccuracy![ii]
@@ -78,8 +79,14 @@ public struct Polyline {
                     timestamp: tsAndAcc.0
                 )
             )
+            if lastDate?.isAfterDate(tsAndAcc.0) == true {
+                isOrdered = false
+            }
         }
-        return locations
+        if isOrdered {
+            return locations
+        }
+        return locations.sorted { $0.timestamp.isBeforeDate($1.timestamp) }
     }
 
     public init(coordinates: [CLLocationCoordinate2D], levels: [UInt32]? = nil, precision: Double = 1e5) {
@@ -248,8 +255,6 @@ public func encodeTimestampAndAccuracy(timestampAndAccuracy: [TimeAndAccuracy]) 
     if timestampAndAccuracy.count == 0 {
         return ""
     }
-
-    
     
     return encodeCoordinates(timestampAndAccuracy.map(convertToCoordinate), precision: 1e5)
 }
