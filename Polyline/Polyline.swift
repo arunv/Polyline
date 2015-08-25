@@ -82,6 +82,7 @@ public struct Polyline {
             if lastDate?.isAfterDate(tsAndAcc.0) == true {
                 isOrdered = false
             }
+            lastDate = tsAndAcc.0
         }
         if isOrdered {
             return locations
