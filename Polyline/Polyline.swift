@@ -134,7 +134,7 @@ public struct Polyline {
     /// :param: encodedPolyline The polyline that you want to decode
     /// :param: encodedLevels The levels that you want to decode (default: nil)
     /// :param: precision The precision used for decoding (default: 1e5)
-    public init(encodedPolyline: String, encodedTimestampAndAccuracy: String? = nil, encodedLevels: String? = nil, precision: Double = 1e5) {
+    public init(encodedPolyline: String, encodedTimestampAndAccuracy: String? = nil, encodedLevels: String? = nil, precision: Double = 1e5) throws {
         
         self.encodedPolyline = encodedPolyline
         self.encodedLevels = encodedLevels
@@ -146,7 +146,8 @@ public struct Polyline {
         if let tsAndAcc = encodedTimestampAndAccuracy {
             timestampAndAccuracy = decodeTimestampAndAccuracy(tsAndAcc)
             if timestampAndAccuracy!.count != coordinates?.count {
-                fatalError("Incorrect number of timestamps for coordinates")
+                // wat where why how
+                throw NSError(domain: "Polyline", code: 103, userInfo: [NSLocalizedDescriptionKey: "Incorrect number of timestamps for coordinates"])
             }
         } else {
             timestampAndAccuracy = nil
@@ -495,9 +496,19 @@ private func convertFromCoordinate(coord: CLLocationCoordinate2D) -> TimeAndAccu
     return (timestamp: NSDate(timeIntervalSince1970: Double(timestamp)), accuracy: Double(accuracy))
 }
 
-@objc class PolylineUtils {
-    class func convertPolylineStringsToPoints(encodedPolyline: String, encodedTimestampAndAccuracy: String) -> [CLLocation] {
-        let poly = Polyline(encodedPolyline: encodedPolyline, encodedTimestampAndAccuracy: encodedTimestampAndAccuracy)
+
+@objc class PolylineUtils: NSObject {
+    class func unsafeConvertPolylineStringsToPoints(encodedPolyline: String, encodedTimestampAndAccuracy: String) throws -> [CLLocation] {
+        let poly = try Polyline(encodedPolyline: encodedPolyline, encodedTimestampAndAccuracy: encodedTimestampAndAccuracy)
         return poly.locations ?? []
+    }
+    
+    class func convertPolylineStringsToPoints(encodedPolyline: String, encodedTimestampAndAccuracy: String)  -> [CLLocation] {
+        do {
+            let poly = try Polyline(encodedPolyline: encodedPolyline, encodedTimestampAndAccuracy: encodedTimestampAndAccuracy)
+            return poly.locations ?? []
+        } catch {
+            return []
+        }
     }
 }
