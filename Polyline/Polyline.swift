@@ -64,9 +64,9 @@ public struct Polyline {
         }
         assert(coordinates?.count == timestampAndAccuracy?.count, "Incorrect number of timestamps for coordinates")
         var isOrdered = true
-        var lastDate : NSDate?
+        var lastDate : Date?
         var locations = [CLLocation]()
-        for (ii, coordinate) in enumerate(self.coordinates!) {
+        for (ii, coordinate) in self.coordinates!.enumerated() {
             let tsAndAcc = timestampAndAccuracy![ii]
             locations.append(
                 CLLocation(
@@ -126,7 +126,7 @@ public struct Polyline {
         
         encodedPolyline = encodeCoordinates(coordinates!, precision: precision)
         encodedLevels = levels.map(encodeLevels)
-        encodedTimestampAndAccuracy = encodeTimestampAndAccuracy(self.timestampAndAccuracy!)
+        encodedTimestampAndAccuracy = encodeTimestampAndAccuracy(timestampAndAccuracy: self.timestampAndAccuracy!)
     }
     
     /// This designated initializer decodes a polyline `String`
@@ -463,7 +463,7 @@ private func isSeparator(_ value: Int32) -> Bool {
 }
 
 private typealias IntegerCoordinates = (latitude: Int, longitude: Int)
-public typealias TimeAndAccuracy = (timestamp: NSDate, accuracy: Double)
+public typealias TimeAndAccuracy = (timestamp: Date, accuracy: Double)
 
 private func convertToCoordinate(timeAndAcc: TimeAndAccuracy) -> CLLocationCoordinate2D {
     var accuracy = timeAndAcc.accuracy > 4095 ? 4095 : timeAndAcc.accuracy
@@ -471,8 +471,8 @@ private func convertToCoordinate(timeAndAcc: TimeAndAccuracy) -> CLLocationCoord
     
     assert(accuracy >= 0 && timestamp >= 0, "Need positive values to encode")
     
-    var ux = unsafeBitCast(UInt32(timestamp), UInt32.self)
-    var uy = unsafeBitCast(UInt32(accuracy), UInt32.self)
+    var ux = unsafeBitCast(UInt32(timestamp), to: UInt32.self)
+    var uy = unsafeBitCast(UInt32(accuracy), to: UInt32.self)
 
     var twoTo22 = UInt32(pow(2.0, 22.0))
     var bottom = (ux & (twoTo22 - 1))
@@ -493,7 +493,7 @@ private func convertFromCoordinate(coord: CLLocationCoordinate2D) -> TimeAndAccu
     var accuracy = UInt32(top & 0xFFF)
     var timestamp = (((top & ~accuracy) >> 12) << 22) | bottom
     
-    return (timestamp: NSDate(timeIntervalSince1970: Double(timestamp)), accuracy: Double(accuracy))
+    return (timestamp: Date(timeIntervalSince1970: Double(timestamp)), accuracy: Double(accuracy))
 }
 
 
