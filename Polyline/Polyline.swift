@@ -113,11 +113,11 @@ public struct Polyline {
     
     // MARK: - Public Methods -
     
-    /// This designated initializer encodes a `[CLLocationCoordinate2D]`
+    /// This init encodes a `[CLLocation]`
     ///
-    /// :param: locations The array of CLLocation that you want to encode
-    /// :param: levels The optional array of levels  that you want to encode (default: nil)
-    /// :param: precision The precision used for encoding (default: 1e5)
+    /// - parameter locations: The `Array` of `CLLocation` that you want to encode
+    /// - parameter levels: The optional array of levels  that you want to encode (default: `nil`)
+    /// - parameter precision: The precision used for encoding (default: `1e5`)
     public init(locations: [CLLocation], levels: [UInt32]? = nil, precision: Double = 1e5) {
         
         self.coordinates = locations.map { $0.coordinate }
@@ -144,7 +144,7 @@ public struct Polyline {
         levels = self.encodedLevels.flatMap(decodeLevels)
 
         if let tsAndAcc = encodedTimestampAndAccuracy {
-            timestampAndAccuracy = decodeTimestampAndAccuracy(tsAndAcc)
+            timestampAndAccuracy = decodeTimestampAndAccuracy(encodedString: tsAndAcc)
             if timestampAndAccuracy!.count != coordinates?.count {
                 // wat where why how
                 throw NSError(domain: "Polyline", code: 103, userInfo: [NSLocalizedDescriptionKey: "Incorrect number of timestamps for coordinates"])
@@ -152,17 +152,6 @@ public struct Polyline {
         } else {
             timestampAndAccuracy = nil
         }
-    }
-    
-    /// This init encodes a `[CLLocation]`
-    ///
-    /// - parameter locations: The `Array` of `CLLocation` that you want to encode
-    /// - parameter levels: The optional array of levels  that you want to encode (default: `nil`)
-    /// - parameter precision: The precision used for encoding (default: `1e5`)
-    public init(locations: [CLLocation], levels: [UInt32]? = nil, precision: Double = 1e5) {
-        
-        let coordinates = toCoordinates(locations)
-        self.init(coordinates: coordinates, levels: levels, precision:precision)
     }
 
 }
