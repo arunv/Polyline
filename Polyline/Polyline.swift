@@ -38,6 +38,8 @@ import MapKit
 /// it is based on google's algorithm that can be found here :
 ///
 /// :see: https://developers.google.com/maps/documentation/utilities/polylinealgorithm
+
+var locationsCache = NSCache<NSString, LocationContainer>()
 public struct Polyline {
     
     /// The array of coordinates (nil if polyline cannot be decoded)
@@ -53,8 +55,14 @@ public struct Polyline {
     public let timestampAndAccuracy: [TimeAndAccuracy]?
     public let encodedTimestampAndAccuracy: String?
     
+    
+    
     /// The array of location (computed from coordinates)
     public var locations: [CLLocation]? {
+        let key = self.encodedPolyline + "_" + (self.encodedTimestampAndAccuracy ?? "") as NSString
+        if let cached = locationsCache.object(forKey: key), cached.locations.count > 0 {
+            return cached.locations
+        }
         if self.coordinates == nil {
             return nil
         }
@@ -84,10 +92,14 @@ public struct Polyline {
             }
             lastDate = tsAndAcc.0
         }
+        var final = [CLLocation]()
         if isOrdered {
-            return locations
+            final = locations
+        } else {
+            final = locations.sorted { $0.timestamp.isBeforeDate($1.timestamp) }
         }
-        return locations.sorted { $0.timestamp.isBeforeDate($1.timestamp) }
+        locationsCache.setObject(LocationContainer(locations: final), forKey: key)
+        return final
     }
 
     public init(coordinates: [CLLocationCoordinate2D], levels: [UInt32]? = nil, precision: Double = 1e5) {
@@ -139,6 +151,7 @@ public struct Polyline {
         self.encodedPolyline = encodedPolyline
         self.encodedLevels = encodedLevels
         self.encodedTimestampAndAccuracy = encodedTimestampAndAccuracy
+        
         
         coordinates = decodePolyline(encodedPolyline, precision: precision)
         levels = self.encodedLevels.flatMap(decodeLevels)
@@ -205,13 +218,26 @@ public func encodeLevels(_ levels: [UInt32]) -> String {
     }
 }
 
+class CoordinateContainer {
+    let coordinates: [CLLocationCoordinate2D]
+    
+    init(coordinates: [CLLocationCoordinate2D]) {
+        self.coordinates = coordinates
+    }
+}
+
 /// This function decodes a `String` to a `[CLLocationCoordinate2D]?`
 ///
 /// - parameter encodedPolyline: `String` representing the encoded Polyline
 /// - parameter precision: The precision used to decode coordinates (default: `1e5`)
 ///
 /// - returns: A `[CLLocationCoordinate2D]` representing the decoded polyline if valid, `nil` otherwise
+let locationCache = NSCache<NSString, CoordinateContainer>()
 public func decodePolyline(_ encodedPolyline: String, precision: Double = 1e5) -> [CLLocationCoordinate2D]? {
+    if let coords = locationCache.object(forKey: encodedPolyline as NSString) as? CoordinateContainer {
+        return coords.coordinates
+    }
+        
     
     let data = encodedPolyline.data(using: String.Encoding.utf8)!
     
@@ -238,7 +264,8 @@ public func decodePolyline(_ encodedPolyline: String, precision: Double = 1e5) -
 
         decodedCoordinates.append(CLLocationCoordinate2D(latitude: lat, longitude: lon))
     }
-    
+
+    locationCache.setObject(CoordinateContainer(coordinates: decodedCoordinates), forKey: encodedPolyline as NSString)
     return decodedCoordinates
 }
 
@@ -485,6 +512,12 @@ private func convertFromCoordinate(coord: CLLocationCoordinate2D) -> TimeAndAccu
     return (timestamp: Date(timeIntervalSince1970: Double(timestamp)), accuracy: Double(accuracy))
 }
 
+class LocationContainer {
+    var locations: [CLLocation]
+    init(locations: [CLLocation]) {
+        self.locations = locations
+    }
+}
 
 @objc class PolylineUtils: NSObject {
     class func unsafeConvertPolylineStringsToPoints(encodedPolyline: String, encodedTimestampAndAccuracy: String) throws -> [CLLocation] {
